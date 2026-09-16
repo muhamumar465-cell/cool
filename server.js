@@ -74,7 +74,7 @@ app.get('/api/health/providers', async (req, res) => {
     try {
       // Make a minimal request to test connectivity
       await geminiClient.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.8-flash',
         contents: 'Hello'
       });
       results.gemini.reachable = true;
@@ -90,7 +90,7 @@ app.get('/api/health/providers', async (req, res) => {
     try {
       // Make a minimal request to test connectivity
       await anthropicClient.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-sonnet-5',
         max_tokens: 10,
         messages: [{ role: 'user', content: 'Hello' }]
       });
@@ -268,7 +268,7 @@ function createMockScanResponse(planMode) {
   if (isPremium) {
     notes.push('Premium scan using Claude 3.5 Sonnet for enhanced understanding.');
   } else {
-    notes.push('Free scan using Gemini 1.5 Flash.');
+    notes.push('Free scan using Gemini 3.8 Flash.');
   }
 
   return {
@@ -329,7 +329,7 @@ app.post('/api/scan', async (req, res) => {
         }));
 
         const result = await geminiClient.models.generateContent({
-          model: 'gemini-1.5-flash',
+          model: 'gemini-3.8-flash',
           contents: [
             { text: 'Analyze this room image(s) and provide a structured JSON response with room dimensions, openings, and furniture. Do not pretend to know exact measurements from photos. Instead, infer proportional relationships and indicate uncertainty in notes.' },
             ...imageParts
@@ -339,7 +339,7 @@ app.post('/api/scan', async (req, res) => {
         // Parse the response - in a real implementation, we'd expect structured JSON
         // For now, we'll create a mock response since the AI might not return exactly what we need
         scanResult = createMockScanResponse(planMode);
-        scanResult.notes.unshift('Scan completed using Gemini 1.5 Flash (mock response for development)');
+        scanResult.notes.unshift('Scan completed using Gemini 3.8 Flash (mock response for development)');
       } else if (useClaude && anthropicClient) {
         // Prepare content for Claude
         const imageContents = images.map(img => ({
