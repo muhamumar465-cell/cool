@@ -851,6 +851,16 @@ app.post('/api/layouts', async (req, res) => {
           `Claude layout generation completed in ${Date.now() - startedAt}ms`
         );
 
+        console.log(
+  'Claude content types:',
+  result.content?.map(block => block.type)
+);
+
+console.log(
+  'Claude result:',
+  JSON.stringify(result, null, 2)
+);
+
         const text =
           result.content?.find(
             block => block.type === 'text'
