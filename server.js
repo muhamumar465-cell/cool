@@ -844,7 +844,7 @@ app.post('/api/layouts', async (req, res) => {
       }
     ]
   }),
-  30000
+  60000
 );
 
         console.log(
