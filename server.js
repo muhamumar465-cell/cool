@@ -105,6 +105,42 @@ Rules:
 - Mention uncertainty about scale in notes.
 `;
 
+const LAYOUT_PROMPT = `
+You are an expert interior designer. Generate furniture layout options for a room based on the provided details.
+
+Return ONLY valid JSON.
+
+Use exactly this structure:
+
+{
+  "layouts": [
+    {
+      "id": "string",
+      "placements": [
+        {
+          "furnitureId": "string",
+          "x": number,
+          "y": number,
+          "rotation": number
+        }
+      ],
+      "clearanceCm": number
+    }
+  ]
+}
+
+Rules:
+- Do NOT use markdown code fences.
+- Do NOT include text outside the JSON.
+- The room dimensions (widthCm, depthCm) are provided in the input.
+- All furniture items must be placed within the room boundaries.
+- Fixed items (mobility: "Fixed") must remain at their exact input positions (xCm, yCm) and rotation.
+- Movable items (mobility: "Movable") can be placed anywhere within the room, respecting constraints.
+- Do not overlap furniture items; leave at least the specified clearanceCm between items and walls if possible, but prioritize staying within room and respecting fixed items.
+- Take into account the provided goals and constraints to inform the layout choices.
+- Generate the number of layout options requested (up to 3).
+`;
+
 // ======================================================
 // HELPERS
 // ======================================================
@@ -299,6 +335,58 @@ function validateScanResponse(data) {
 
   if (!Array.isArray(data.notes)) {
     throw new Error('notes must be an array');
+  }
+
+  return true;
+}
+
+function validateLayoutResponse(data) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid response: expected object');
+  }
+
+  if (!data.layouts || !Array.isArray(data.layouts)) {
+    throw new Error('Invalid response: missing or invalid layouts');
+  }
+
+  for (const layout of data.layouts) {
+    if (!layout || typeof layout !== 'object') {
+      throw new Error('Invalid layout');
+    }
+
+    if (!layout.id || typeof layout.id !== 'string') {
+      throw new Error('Invalid layout.id');
+    }
+
+    if (!Array.isArray(layout.placements)) {
+      throw new Error('Invalid placements: must be an array');
+    }
+
+    for (const placement of layout.placements) {
+      if (!placement || typeof placement !== 'object') {
+        throw new Error('Invalid placement');
+      }
+
+      if (!placement.furnitureId || typeof placement.furnitureId !== 'string') {
+        throw new Error('Invalid placement.furnitureId');
+      }
+
+      if (typeof placement.x !== 'number' || !Number.isFinite(placement.x)) {
+        throw new Error('Invalid placement.x');
+      }
+
+      if (typeof placement.y !== 'number' || !Number.isFinite(placement.y)) {
+        throw new Error('Invalid placement.y');
+      }
+
+      if (typeof placement.rotation !== 'number' || !Number.isFinite(placement.rotation)) {
+        throw new Error('Invalid placement.rotation');
+      }
+    }
+
+    if (typeof layout.clearanceCm !== 'number' || !Number.isFinite(layout.clearanceCm) || layout.clearanceCm < 0) {
+      throw new Error('Invalid layout.clearanceCm');
+    }
   }
 
   return true;
@@ -626,38 +714,277 @@ app.post('/api/layouts', async (req, res) => {
       });
     }
 
+    // Validate optional fields
+    if (count !== undefined && (typeof count !== 'number' || !Number.isInteger(count) || count <= 0)) {
+      return res.status(400).json({
+        error: 'count must be a positive integer'
+      });
+    }
+
+    if (clearanceCm !== undefined && (typeof clearanceCm !== 'number' || !Number.isFinite(clearanceCm) || clearanceCm < 0)) {
+      return res.status(400).json({
+        error: 'clearanceCm must be a non-negative number'
+      });
+    }
+
+    // Defaults
+    const effectiveCount = Math.min(count || 1, 3);
+    const effectiveClearanceCm = clearanceCm || 75;
+
     const provider =
       planMode === 'premium'
         ? 'Claude'
         : 'Gemini';
 
-    const layouts = [];
+    // Construct prompt for AI
+    const prompt = LAYOUT_PROMPT + "\n\nInput:\n" + JSON.stringify({
+      room,
+      furniture,
+      goals,
+      constraints,
+      count,
+      clearanceCm
+    }, null, 2);
 
-    for (
-      let i = 0;
-      i < Math.min(count || 1, 3);
-      i++
-    ) {
-      layouts.push({
-        id: `layout-${i + 1}`,
+    let layoutResult;
 
-        placements: furniture.map(
-          (item, index) => ({
-            furnitureId: item.id,
-            x: 50 + index * 60,
-            y: 50 + index * 40,
-            rotation: index * 15
-          })
-        ),
+    if (planMode === 'free') {
+      if (!geminiClient) {
+        return res.status(503).json({
+          error: 'Gemini API not configured'
+        });
+      }
 
-        clearanceCm:
-          clearanceCm || 75
+      try {
+        const startedAt = Date.now();
+
+        const result = await withTimeout(
+          geminiClient.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ],
+            config: {
+              responseMimeType: 'application/json'
+            }
+          }),
+          30000
+        );
+
+        console.log(
+          `Gemini 3.6 layout generation completed in ${Date.now() - startedAt}ms`
+        );
+
+        layoutResult = parseAiJson(result.text);
+      } catch (error) {
+        console.error(
+          'Gemini layout error:',
+          error
+        );
+
+        const status = Number(
+          error?.status ||
+          error?.code ||
+          error?.error?.code
+        );
+
+        return res
+          .status(
+            status >= 400 && status < 600
+              ? status
+              : 503
+          )
+          .json({
+            error:
+              error?.message ||
+              'Gemini layout generation failed'
+          });
+      }
+    } else { // premium
+      if (!anthropicClient) {
+        return res.status(503).json({
+          error: 'Anthropic API not configured'
+        });
+      }
+
+      try {
+        const startedAt = Date.now();
+
+        const result = await withTimeout(
+          anthropicClient.messages.create({
+            model: 'claude-sonnet-5',
+            max_tokens: 1500,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: prompt
+                  }
+                ]
+              }
+            ]
+          }),
+          30000
+        );
+
+        console.log(
+          `Claude layout generation completed in ${Date.now() - startedAt}ms`
+        );
+
+        const text =
+          result.content?.find(
+            block => block.type === 'text'
+          )?.text || '';
+
+        layoutResult = parseAiJson(text);
+      } catch (error) {
+        console.error(
+          'Claude layout error:',
+          error
+        );
+
+        const status = Number(error?.status);
+
+        return res
+          .status(
+            status >= 400 && status < 600
+              ? status
+              : 503
+          )
+          .json({
+            error:
+              error?.message ||
+              'Claude layout generation failed'
+          });
+      }
+    }
+
+    // Validate the AI response structure
+    validateLayoutResponse(layoutResult);
+
+    // Semantic validation: ensure layout adheres to room constraints and furniture properties
+    function validateLayoutSemantics(layoutResult, room, furniture) {
+      if (!layoutResult || !layoutResult.layouts || !Array.isArray(layoutResult.layouts)) {
+        throw new Error('Invalid layout result: missing layouts array');
+      }
+
+      // Build a map of input furniture by id for quick lookup
+      const inputFurnitureMap = {};
+      furniture.forEach(item => {
+        if (!item.id || typeof item.id !== 'string') {
+          throw new Error('Invalid input furniture: missing or non-string id');
+        }
+        if (inputFurnitureMap[item.id]) {
+          throw new Error(`Duplicate furniture id in input: ${item.id}`);
+        }
+        inputFurnitureMap[item.id] = item;
+      });
+
+      layoutResult.layouts.forEach((layout, layoutIndex) => {
+        if (!layout || typeof layout !== 'object') {
+          throw new Error(`Invalid layout at index ${layoutIndex}: not an object`);
+        }
+
+        if (!layout.id || typeof layout.id !== 'string') {
+          throw new Error(`Invalid layout at index ${layoutIndex}: missing or non-string id`);
+        }
+
+        if (!Array.isArray(layout.placements)) {
+          throw new Error(`Invalid layout at index ${layoutIndex}: placements must be an array`);
+        }
+
+        if (typeof layout.clearanceCm !== 'number' || !Number.isFinite(layout.clearanceCm) || layout.clearanceCm < 0) {
+          throw new Error(`Invalid layout at index ${layoutIndex}: clearanceCm must be a non-negative number`);
+        }
+
+        // Track which furniture ids we've seen in this layout
+        const seenFurnitureIds = new Set();
+
+        layout.placements.forEach((placement, placementIndex) => {
+          if (!placement || typeof placement !== 'object') {
+            throw new Error(`Invalid placement at layout ${layoutIndex}, placement ${placementIndex}: not an object`);
+          }
+
+          if (!placement.furnitureId || typeof placement.furnitureId !== 'string') {
+            throw new Error(`Invalid placement at layout ${layoutIndex}, placement ${placementIndex}: missing or non-string furnitureId`);
+          }
+
+          const furnitureId = placement.furnitureId;
+          if (seenFurnitureIds.has(furnitureId)) {
+            throw new Error(`Duplicate furnitureId ${furnitureId} in layout ${layoutIndex}`);
+          }
+          seenFurnitureIds.add(furnitureId);
+
+          // Check that this furniture id exists in the input
+          const inputItem = inputFurnitureMap[furnitureId];
+          if (!inputItem) {
+            throw new Error(`Layout ${layoutIndex} contains furnitureId ${furnitureId} which is not in the input furniture`);
+          }
+
+          // Fixed furniture must retain its exact position and rotation
+          if (inputItem.mobility === 'Fixed') {
+            if (placement.x !== inputItem.xCm || placement.y !== inputItem.yCm || placement.rotation !== inputItem.rotation) {
+              throw new Error(`Fixed furniture ${furnitureId} in layout ${layoutIndex} must retain its original position (xCm: ${inputItem.xCm}, yCm: ${inputItem.yCm}, rotation: ${inputItem.rotation}) but got (x: ${placement.x}, y: ${placement.y}, rotation: ${placement.rotation})`);
+            }
+          }
+
+          // Ensure furniture is within room boundaries (assuming x, y are the center of the furniture)
+          const halfWidth = inputItem.widthCm / 2;
+          const halfDepth = inputItem.depthCm / 2;
+          if (placement.x - halfWidth < 0 || placement.x + halfWidth > room.widthCm ||
+              placement.y - halfDepth < 0 || placement.y + halfDepth > room.depthCm) {
+            throw new Error(`Furniture ${furnitureId} in layout ${layoutIndex} exceeds room boundaries`);
+          }
+
+          // Check for overlap with other furniture in the same layout (axis-aligned bounding boxes, ignoring rotation for simplicity)
+          // We'll compare with all other placements in this layout
+          for (let j = 0; j < layout.placements.length; j++) {
+            if (j === placementIndex) continue;
+            const other = layout.placements[j];
+            const otherId = other.furnitureId;
+            const otherItem = inputFurnitureMap[otherId];
+            if (!otherItem) {
+              // This should not happen because we already validated that all furnitureIds are in input
+              throw new Error(`Invalid furnitureId ${otherId} in layout ${layoutIndex}`);
+            }
+            const otherHalfWidth = otherItem.widthCm / 2;
+            const otherHalfDepth = otherItem.depthCm / 2;
+            // Check if the two rectangles overlap (assuming axis-aligned, centers at (x,y))
+            if (placement.x + halfWidth > other.x - otherHalfWidth &&
+                placement.x - halfWidth < other.x + otherHalfWidth &&
+                placement.y + halfDepth > other.y - otherHalfDepth &&
+                placement.y - halfDepth < other.y + otherHalfDepth) {
+              throw new Error(`Furniture ${furnitureId} overlaps with furniture ${otherId} in layout ${layoutIndex}`);
+            }
+          }
+        });
+
+        // Ensure all input furniture ids are present in the layout (no missing furniture)
+        const layoutFurnitureIds = new Set(layout.placements.map(p => p.furnitureId));
+        furniture.forEach(item => {
+          if (!layoutFurnitureIds.has(item.id)) {
+            throw new Error(`Layout ${layoutIndex} is missing furniture id ${item.id} from input`);
+          }
+        });
       });
     }
 
+    // Perform semantic validation
+    validateLayoutSemantics(layoutResult, room, furniture);
+
+    // Format response to match the expected contract
     return res.json({
-      layouts,
-      checked: layouts.length,
+      layouts: layoutResult.layouts,
+      checked: layoutResult.layouts.length,
       aiProvider: provider,
 
       interpretedGoals:
@@ -680,6 +1007,7 @@ app.post('/api/layouts', async (req, res) => {
 
     return res.status(500).json({
       error:
+        error?.message ||
         'Internal server error during layout generation'
     });
   }
