@@ -334,7 +334,7 @@ app.get('/api/health/providers', async (req, res) => {
     try {
       await withTimeout(
         geminiClient.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.6-flash',
           contents: 'Reply only with OK'
         }),
         15000
@@ -344,6 +344,8 @@ app.get('/api/health/providers', async (req, res) => {
     } catch (error) {
       results.gemini.error = error.message;
     }
+  } else {
+    results.gemini.error = 'API key not configured';
   }
 
   if (anthropicClient) {
@@ -363,6 +365,8 @@ app.get('/api/health/providers', async (req, res) => {
     } catch (error) {
       results.claude.error = error.message;
     }
+  } else {
+    results.claude.error = 'API key not configured';
   }
 
   res.json(results);
@@ -390,7 +394,10 @@ app.post('/api/scan', async (req, res) => {
 
     let scanResult;
 
-    // FREE = GEMINI
+    // ==================================================
+    // FREE = GEMINI 3.6 FLASH
+    // ==================================================
+
     if (planMode === 'free') {
       if (!geminiClient) {
         return res.status(503).json({
@@ -411,20 +418,22 @@ app.post('/api/scan', async (req, res) => {
         });
 
         console.log(
-          `Gemini scan started: ${images.length} images`
+          `Gemini 3.6 scan started with ${images.length} image(s)`
         );
 
-        const start = Date.now();
+        const startedAt = Date.now();
 
         const result = await withTimeout(
           geminiClient.models.generateContent({
-            model: 'gemini-3.5-flash',
+            model: 'gemini-3.6-flash',
 
             contents: [
               {
                 role: 'user',
                 parts: [
-                  { text: SCAN_PROMPT },
+                  {
+                    text: SCAN_PROMPT
+                  },
                   ...imageParts
                 ]
               }
@@ -438,7 +447,7 @@ app.post('/api/scan', async (req, res) => {
         );
 
         console.log(
-          `Gemini scan finished in ${Date.now() - start}ms`
+          `Gemini 3.6 scan completed in ${Date.now() - startedAt}ms`
         );
 
         scanResult = parseAiJson(result.text);
@@ -449,17 +458,30 @@ app.post('/api/scan', async (req, res) => {
           error
         );
 
-        return res.status(
-          Number(error?.status || error?.code) || 503
-        ).json({
-          error:
-            error?.message ||
-            'Gemini scan failed'
-        });
+        const status = Number(
+          error?.status ||
+          error?.code ||
+          error?.error?.code
+        );
+
+        return res
+          .status(
+            status >= 400 && status < 600
+              ? status
+              : 503
+          )
+          .json({
+            error:
+              error?.message ||
+              'Gemini scan failed'
+          });
       }
     }
 
+    // ==================================================
     // PREMIUM = CLAUDE
+    // ==================================================
+
     if (planMode === 'premium') {
       if (!anthropicClient) {
         return res.status(503).json({
@@ -473,7 +495,6 @@ app.post('/api/scan', async (req, res) => {
 
           return {
             type: 'image',
-
             source: {
               type: 'base64',
               media_type: mimeType,
@@ -483,15 +504,14 @@ app.post('/api/scan', async (req, res) => {
         });
 
         console.log(
-          `Claude scan started: ${images.length} images`
+          `Claude scan started with ${images.length} image(s)`
         );
 
-        const start = Date.now();
+        const startedAt = Date.now();
 
         const result = await withTimeout(
           anthropicClient.messages.create({
             model: 'claude-sonnet-5',
-
             max_tokens: 1500,
 
             messages: [
@@ -511,7 +531,7 @@ app.post('/api/scan', async (req, res) => {
         );
 
         console.log(
-          `Claude scan finished in ${Date.now() - start}ms`
+          `Claude scan completed in ${Date.now() - startedAt}ms`
         );
 
         const text =
@@ -527,13 +547,19 @@ app.post('/api/scan', async (req, res) => {
           error
         );
 
-        return res.status(
-          Number(error?.status) || 503
-        ).json({
-          error:
-            error?.message ||
-            'Claude scan failed'
-        });
+        const status = Number(error?.status);
+
+        return res
+          .status(
+            status >= 400 && status < 600
+              ? status
+              : 503
+          )
+          .json({
+            error:
+              error?.message ||
+              'Claude scan failed'
+          });
       }
     }
 
@@ -546,6 +572,11 @@ app.post('/api/scan', async (req, res) => {
       console.error(
         'Scan validation error:',
         error
+      );
+
+      console.error(
+        'Invalid scan response:',
+        scanResult
       );
 
       return res.status(400).json({
@@ -568,7 +599,7 @@ app.post('/api/scan', async (req, res) => {
 });
 
 // ======================================================
-// LAYOUTS — STILL MOCK
+// LAYOUTS — STILL MOCK FOR NOW
 // ======================================================
 
 app.post('/api/layouts', async (req, res) => {
@@ -619,7 +650,8 @@ app.post('/api/layouts', async (req, res) => {
           })
         ),
 
-        clearanceCm: clearanceCm || 75
+        clearanceCm:
+          clearanceCm || 75
       });
     }
 
@@ -627,10 +659,15 @@ app.post('/api/layouts', async (req, res) => {
       layouts,
       checked: layouts.length,
       aiProvider: provider,
+
       interpretedGoals:
         goals ? [String(goals)] : [],
+
       interpretedConstraints:
-        constraints ? [String(constraints)] : [],
+        constraints
+          ? [String(constraints)]
+          : [],
+
       unsupported: [],
       rejected: []
     });
@@ -654,7 +691,10 @@ app.post('/api/layouts', async (req, res) => {
 
 app.post('/api/furniture-advice', async (req, res) => {
   try {
-    const { task, candidates } = req.body;
+    const {
+      task,
+      candidates
+    } = req.body;
 
     if (!Array.isArray(candidates)) {
       return res.status(400).json({
@@ -662,31 +702,39 @@ app.post('/api/furniture-advice', async (req, res) => {
       });
     }
 
-    const recommendations = candidates
-      .slice(0, 3)
-      .map((candidate, index) => ({
-        productId:
-          candidate.product?.id ||
-          `product-${index + 1}`,
+    const recommendations =
+      candidates
+        .slice(0, 3)
+        .map((candidate, index) => ({
+          productId:
+            candidate.product?.id ||
+            `product-${index + 1}`,
 
-        name:
-          candidate.product?.name ||
-          `Furniture Option ${index + 1}`,
+          name:
+            candidate.product?.name ||
+            `Furniture Option ${index + 1}`,
 
-        reason:
-          `This option fits your ${task || 'room'}`,
+          reason:
+            `This option fits your ${
+              task || 'room'
+            }`,
 
-        confidence:
-          0.8 - index * 0.1
-      }));
+          confidence:
+            0.8 - index * 0.1
+        }));
 
-    res.json({
+    return res.json({
       recommendations,
       provider: 'Claude'
     });
 
   } catch (error) {
-    res.status(500).json({
+    console.error(
+      'Furniture advice error:',
+      error
+    );
+
+    return res.status(500).json({
       error:
         'Internal server error during furniture advice'
     });
@@ -719,6 +767,11 @@ app.post('/api/adjust', async (req, res) => {
     });
 
   } catch (error) {
+    console.error(
+      'Adjust endpoint error:',
+      error
+    );
+
     return res.status(500).json({
       error:
         'Internal server error during layout adjustment'
@@ -745,7 +798,8 @@ app.post('/api/chat', async (req, res) => {
 
     if (!anthropicClient) {
       return res.status(503).json({
-        error: 'Anthropic API not configured'
+        error:
+          'Anthropic API not configured'
       });
     }
 
@@ -802,13 +856,20 @@ app.post('/api/chat', async (req, res) => {
       error
     );
 
-    return res.status(
-      Number(error?.status) || 500
-    ).json({
-      error:
-        error?.message ||
-        'Chat request failed'
-    });
+    const status =
+      Number(error?.status) || 500;
+
+    return res
+      .status(
+        status >= 400 && status < 600
+          ? status
+          : 500
+      )
+      .json({
+        error:
+          error?.message ||
+          'Chat request failed'
+      });
   }
 });
 
@@ -817,7 +878,7 @@ app.post('/api/chat', async (req, res) => {
 // ======================================================
 
 app.use('/api', (req, res) => {
-  res.status(404).json({
+  return res.status(404).json({
     error:
       `API route not found: ${req.method} ${req.originalUrl}`
   });
@@ -833,6 +894,10 @@ app.use(
   )
 );
 
+// ======================================================
+// SPA FALLBACK
+// ======================================================
+
 app.get('*', (req, res) => {
   res.sendFile(
     path.join(
@@ -843,12 +908,12 @@ app.get('*', (req, res) => {
 });
 
 // ======================================================
-// START
+// START SERVER
 // ======================================================
 
 app.listen(PORT, () => {
   console.log(
-    `Spacify Backend: http://localhost:${PORT}`
+    `Spacify Backend running at http://localhost:${PORT}`
   );
 
   console.log(
@@ -857,5 +922,13 @@ app.listen(PORT, () => {
 
   console.log(
     `Providers: http://localhost:${PORT}/api/health/providers`
+  );
+
+  console.log(
+    'Free scan model: gemini-3.6-flash'
+  );
+
+  console.log(
+    'Premium scan model: claude-sonnet-5'
   );
 });
