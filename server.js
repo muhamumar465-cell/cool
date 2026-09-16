@@ -49,8 +49,8 @@ if (anthropicApiKey) {
 app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
-    geminiConfigured: !!geminiClient,
-    claudeConfigured: !!anthropicClient
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    claudeConfigured: !!process.env.ANTHROPIC_API_KEY
   });
 });
 
