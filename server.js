@@ -1226,7 +1226,15 @@ app.use(
 // SPA FALLBACK
 // ======================================================
 
+const isStaticAsset = (path) => {
+  const staticExtensions = ['.js', '.css', '.map', '.wasm', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.txt', '.json'];
+  return staticExtensions.some(ext => path.toLowerCase().endsWith(ext));
+};
+
 app.get('*', (req, res) => {
+  if (isStaticAsset(req.path)) {
+    return res.status(404).send('Not Found');
+  }
   res.sendFile(
     path.join(
       __dirname,
