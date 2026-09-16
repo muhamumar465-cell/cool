@@ -6,7 +6,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Load environment variables
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,11 +14,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// AI clients
+// ======================================================
+// AI CLIENTS
+// ======================================================
+
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -28,24 +29,40 @@ let anthropicClient = null;
 
 if (geminiApiKey) {
   try {
-    geminiClient = new GoogleGenAI({ apiKey: geminiApiKey });
+    geminiClient = new GoogleGenAI({
+      apiKey: geminiApiKey
+    });
   } catch (error) {
-    console.warn('Failed to initialize Gemini client:', error.message);
+    console.warn(
+      'Failed to initialize Gemini client:',
+      error.message
+    );
   }
 }
 
 if (anthropicApiKey) {
   try {
-    anthropicClient = new Anthropic({ apiKey: anthropicApiKey });
+    anthropicClient = new Anthropic({
+      apiKey: anthropicApiKey
+    });
   } catch (error) {
-    console.warn('Failed to initialize Anthropic client:', error.message);
+    console.warn(
+      'Failed to initialize Anthropic client:',
+      error.message
+    );
   }
 }
 
-const SCAN_PROMPT = `
-Analyze all supplied room images as views of the same room.
+// ======================================================
+// PROMPTS
+// ======================================================
 
-Return ONLY valid JSON using this exact structure:
+const SCAN_PROMPT = `
+Analyze all supplied room images as views of the SAME room.
+
+Return ONLY valid JSON.
+
+Use exactly this structure:
 
 {
   "room": {
@@ -77,17 +94,24 @@ Return ONLY valid JSON using this exact structure:
 }
 
 Rules:
-- Do not use Markdown code fences.
-- Do not add explanatory text outside the JSON.
-- Treat all images as views of the same room.
-- Do not pretend exact real-world dimensions can be known from ordinary photos.
-- Make internally consistent proportional estimates.
-- Mention scale uncertainty in notes.
+- Do NOT use markdown code fences.
+- Do NOT include text outside the JSON.
+- Treat all supplied images as different views of the same room.
+- Detect furniture consistently across multiple images.
+- Do not duplicate the same furniture item merely because it appears in multiple photos.
+- Infer relative room geometry and furniture positions.
+- Do not pretend ordinary photos provide exact centimetre measurements.
+- Make dimensions internally consistent.
+- Mention uncertainty about scale in notes.
 `;
+
+// ======================================================
+// HELPERS
+// ======================================================
 
 function parseDataUrl(image) {
   if (typeof image !== 'string' || !image.trim()) {
-    throw new Error('Each image must be a non-empty data URL');
+    throw new Error('Each image must be a non-empty string');
   }
 
   const match = image.match(/^data:([^;,]+);base64,(.+)$/s);
@@ -99,7 +123,6 @@ function parseDataUrl(image) {
     };
   }
 
-  // Fallback for raw base64
   return {
     mimeType: 'image/jpeg',
     data: image
@@ -113,7 +136,6 @@ function parseAiJson(text) {
 
   let cleaned = text.trim();
 
-  // Remove optional Markdown JSON fences
   cleaned = cleaned
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
@@ -121,17 +143,35 @@ function parseAiJson(text) {
 
   try {
     return JSON.parse(cleaned);
-  } catch (error) {
-    // Last attempt: extract first {...} object
+  } catch {
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
 
     if (firstBrace !== -1 && lastBrace > firstBrace) {
-      return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      return JSON.parse(
+        cleaned.slice(firstBrace, lastBrace + 1)
+      );
     }
 
     throw new Error('AI returned invalid JSON');
   }
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              `AI request timed out after ${Math.round(ms / 1000)} seconds`
+            )
+          ),
+        ms
+      )
+    )
+  ]);
 }
 
 function validateScanResponse(data) {
@@ -261,12 +301,6 @@ function validateScanResponse(data) {
     throw new Error('notes must be an array');
   }
 
-  for (const note of data.notes) {
-    if (typeof note !== 'string') {
-      throw new Error('Invalid note');
-    }
-  }
-
   return true;
 }
 
@@ -298,17 +332,18 @@ app.get('/api/health/providers', async (req, res) => {
 
   if (geminiClient) {
     try {
-      await geminiClient.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: 'Reply only with OK'
-      });
+      await withTimeout(
+        geminiClient.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: 'Reply only with OK'
+        }),
+        15000
+      );
 
       results.gemini.reachable = true;
     } catch (error) {
       results.gemini.error = error.message;
     }
-  } else {
-    results.gemini.error = 'API key not configured';
   }
 
   if (anthropicClient) {
@@ -328,8 +363,6 @@ app.get('/api/health/providers', async (req, res) => {
     } catch (error) {
       results.claude.error = error.message;
     }
-  } else {
-    results.claude.error = 'API key not configured';
   }
 
   res.json(results);
@@ -343,43 +376,28 @@ app.post('/api/scan', async (req, res) => {
   try {
     const { images, planMode } = req.body;
 
-    if (!Array.isArray(images)) {
+    if (!Array.isArray(images) || images.length === 0) {
       return res.status(400).json({
-        error: 'images must be an array'
-      });
-    }
-
-    if (images.length === 0) {
-      return res.status(400).json({
-        error: 'at least one image is required'
+        error: 'At least one image is required'
       });
     }
 
     if (planMode !== 'free' && planMode !== 'premium') {
       return res.status(400).json({
-        error: 'planMode must be either "free" or "premium"'
-      });
-    }
-
-    const useGemini = planMode === 'free';
-    const useClaude = planMode === 'premium';
-
-    if (useGemini && !geminiClient) {
-      return res.status(503).json({
-        error: 'Gemini API not configured'
-      });
-    }
-
-    if (useClaude && !anthropicClient) {
-      return res.status(503).json({
-        error: 'Anthropic API not configured'
+        error: 'Invalid planMode'
       });
     }
 
     let scanResult;
 
-    // FREE — GEMINI
-    if (useGemini) {
+    // FREE = GEMINI
+    if (planMode === 'free') {
+      if (!geminiClient) {
+        return res.status(503).json({
+          error: 'Gemini API not configured'
+        });
+      }
+
       try {
         const imageParts = images.map(image => {
           const { mimeType, data } = parseDataUrl(image);
@@ -392,61 +410,70 @@ app.post('/api/scan', async (req, res) => {
           };
         });
 
-        const result = await geminiClient.models.generateContent({
-          model: 'gemini-3.8-flash',
+        console.log(
+          `Gemini scan started: ${images.length} images`
+        );
 
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: SCAN_PROMPT
-                },
-                ...imageParts
-              ]
+        const start = Date.now();
+
+        const result = await withTimeout(
+          geminiClient.models.generateContent({
+            model: 'gemini-3.5-flash',
+
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: SCAN_PROMPT },
+                  ...imageParts
+                ]
+              }
+            ],
+
+            config: {
+              responseMimeType: 'application/json'
             }
-          ],
+          }),
+          30000
+        );
 
-          config: {
-            responseMimeType: 'application/json'
-          }
-        });
+        console.log(
+          `Gemini scan finished in ${Date.now() - start}ms`
+        );
 
-        try {
-          scanResult = parseAiJson(result.text);
-        } catch (parseError) {
-          console.error(
-            'Gemini JSON parse error:',
-            parseError.message
-          );
-
-          console.error(
-            'Gemini raw response:',
-            result.text
-          );
-
-          return res.status(400).json({
-            error: 'AI returned invalid JSON'
-          });
-        }
+        scanResult = parseAiJson(result.text);
 
       } catch (error) {
-        console.error('Gemini service error:', error);
+        console.error(
+          'Gemini scan error:',
+          error
+        );
 
-        return res.status(503).json({
-          error: error.message
+        return res.status(
+          Number(error?.status || error?.code) || 503
+        ).json({
+          error:
+            error?.message ||
+            'Gemini scan failed'
         });
       }
     }
 
-    // PREMIUM — CLAUDE
-    if (useClaude) {
+    // PREMIUM = CLAUDE
+    if (planMode === 'premium') {
+      if (!anthropicClient) {
+        return res.status(503).json({
+          error: 'Anthropic API not configured'
+        });
+      }
+
       try {
         const imageContents = images.map(image => {
           const { mimeType, data } = parseDataUrl(image);
 
           return {
             type: 'image',
+
             source: {
               type: 'base64',
               media_type: mimeType,
@@ -455,55 +482,57 @@ app.post('/api/scan', async (req, res) => {
           };
         });
 
-        const result = await anthropicClient.messages.create({
-          model: 'claude-sonnet-5',
+        console.log(
+          `Claude scan started: ${images.length} images`
+        );
 
-          max_tokens: 1500,
+        const start = Date.now();
 
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: SCAN_PROMPT
-                },
-                ...imageContents
-              ]
-            }
-          ]
-        });
+        const result = await withTimeout(
+          anthropicClient.messages.create({
+            model: 'claude-sonnet-5',
+
+            max_tokens: 1500,
+
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: SCAN_PROMPT
+                  },
+                  ...imageContents
+                ]
+              }
+            ]
+          }),
+          30000
+        );
+
+        console.log(
+          `Claude scan finished in ${Date.now() - start}ms`
+        );
 
         const text =
           result.content?.find(
             block => block.type === 'text'
           )?.text || '';
 
-        try {
-          scanResult = parseAiJson(text);
-        } catch (parseError) {
-          console.error(
-            'Claude JSON parse error:',
-            parseError.message
-          );
-
-          console.error(
-            'Claude raw response:',
-            text
-          );
-
-          return res.status(400).json({
-            error: 'AI returned invalid JSON'
-          });
-        }
+        scanResult = parseAiJson(text);
 
       } catch (error) {
-        console.error('Claude service error:', error);
+        console.error(
+          'Claude scan error:',
+          error
+        );
 
         return res.status(
           Number(error?.status) || 503
         ).json({
-          error: error.message
+          error:
+            error?.message ||
+            'Claude scan failed'
         });
       }
     }
@@ -513,35 +542,33 @@ app.post('/api/scan', async (req, res) => {
 
       return res.json(scanResult);
 
-    } catch (validationError) {
+    } catch (error) {
       console.error(
         'Scan validation error:',
-        validationError
-      );
-
-      console.error(
-        'Invalid scan result:',
-        scanResult
+        error
       );
 
       return res.status(400).json({
-        error: validationError.message
+        error: error.message
       });
     }
 
   } catch (error) {
-    console.error('Scan endpoint error:', error);
+    console.error(
+      'Scan endpoint error:',
+      error
+    );
 
     return res.status(500).json({
       error:
-        error.message ||
-        'Internal server error during scan processing'
+        error?.message ||
+        'Internal server error during scan'
     });
   }
 });
 
 // ======================================================
-// LAYOUTS
+// LAYOUTS — STILL MOCK
 // ======================================================
 
 app.post('/api/layouts', async (req, res) => {
@@ -568,34 +595,31 @@ app.post('/api/layouts', async (req, res) => {
       });
     }
 
-    if (typeof count !== 'number' || count <= 0) {
-      return res.status(400).json({
-        error: 'count must be a positive number'
-      });
-    }
-
-    // STILL MOCK FOR NOW
-    const isPremium = planMode === 'premium';
-    const provider = isPremium ? 'Claude' : 'Gemini';
+    const provider =
+      planMode === 'premium'
+        ? 'Claude'
+        : 'Gemini';
 
     const layouts = [];
 
-    for (let i = 0; i < Math.min(count, 3); i++) {
+    for (
+      let i = 0;
+      i < Math.min(count || 1, 3);
+      i++
+    ) {
       layouts.push({
         id: `layout-${i + 1}`,
 
-        placements: furniture.map((item, index) => ({
-          furnitureId: item.id,
-          x: 50 + index * 60,
-          y: 50 + index * 40,
-          rotation: index * 15
-        })),
+        placements: furniture.map(
+          (item, index) => ({
+            furnitureId: item.id,
+            x: 50 + index * 60,
+            y: 50 + index * 40,
+            rotation: index * 15
+          })
+        ),
 
-        clearanceCm: clearanceCm || 75,
-
-        wallsUtilized:
-          ['north', 'south', 'east', 'west']
-            .slice(0, 2 + i)
+        clearanceCm: clearanceCm || 75
       });
     }
 
@@ -603,19 +627,19 @@ app.post('/api/layouts', async (req, res) => {
       layouts,
       checked: layouts.length,
       aiProvider: provider,
-
       interpretedGoals:
         goals ? [String(goals)] : [],
-
       interpretedConstraints:
         constraints ? [String(constraints)] : [],
-
       unsupported: [],
       rejected: []
     });
 
   } catch (error) {
-    console.error('Layouts endpoint error:', error);
+    console.error(
+      'Layouts endpoint error:',
+      error
+    );
 
     return res.status(500).json({
       error:
@@ -630,11 +654,7 @@ app.post('/api/layouts', async (req, res) => {
 
 app.post('/api/furniture-advice', async (req, res) => {
   try {
-    const {
-      task,
-      budget,
-      candidates
-    } = req.body;
+    const { task, candidates } = req.body;
 
     if (!Array.isArray(candidates)) {
       return res.status(400).json({
@@ -643,7 +663,7 @@ app.post('/api/furniture-advice', async (req, res) => {
     }
 
     const recommendations = candidates
-      .slice(0, Math.min(3, candidates.length))
+      .slice(0, 3)
       .map((candidate, index) => ({
         productId:
           candidate.product?.id ||
@@ -654,115 +674,51 @@ app.post('/api/furniture-advice', async (req, res) => {
           `Furniture Option ${index + 1}`,
 
         reason:
-          `This option fits well with your ${
-            task || 'room'
-          } and budget`,
+          `This option fits your ${task || 'room'}`,
 
         confidence:
-          0.8 - index * 0.1,
-
-        dimensions: {
-          widthCm: 100 + index * 20,
-          depthCm: 50 + index * 10,
-          heightCm: 80 + index * 15
-        }
+          0.8 - index * 0.1
       }));
 
-    return res.json({
+    res.json({
       recommendations,
       provider: 'Claude'
     });
 
   } catch (error) {
-    console.error(
-      'Furniture advice endpoint error:',
-      error
-    );
-
-    return res.status(500).json({
+    res.status(500).json({
       error:
-        'Internal server error during furniture advice generation'
+        'Internal server error during furniture advice'
     });
   }
 });
 
 // ======================================================
-// ADJUST
+// ADJUST — STILL MOCK
 // ======================================================
 
 app.post('/api/adjust', async (req, res) => {
   try {
     const {
-      room,
-      sourceFurniture,
       layout,
-      request,
       planMode
     } = req.body;
 
-    if (!room || typeof room !== 'object') {
+    if (!layout) {
       return res.status(400).json({
-        error: 'Invalid room data'
+        error: 'Invalid layout'
       });
     }
-
-    if (!layout || typeof layout !== 'object') {
-      return res.status(400).json({
-        error: 'Invalid layout data'
-      });
-    }
-
-    if (!request || typeof request !== 'string') {
-      return res.status(400).json({
-        error: 'request must be a non-empty string'
-      });
-    }
-
-    const provider =
-      planMode === 'premium'
-        ? 'Claude'
-        : 'Gemini';
-
-    const adjustedLayout = {
-      ...layout,
-      placements:
-        Array.isArray(layout.placements)
-          ? layout.placements.map(item => ({
-              ...item
-            }))
-          : []
-    };
-
-    adjustedLayout.placements.forEach(
-      (placement, index) => {
-
-        if (placement.x !== undefined) {
-          placement.x +=
-            index % 2 === 0 ? 5 : -5;
-        }
-
-        if (placement.y !== undefined) {
-          placement.y +=
-            index % 2 === 0 ? -5 : 5;
-        }
-
-        if (placement.rotation !== undefined) {
-          placement.rotation += index * 5;
-        }
-      }
-    );
 
     return res.json({
-      layout: adjustedLayout,
-      aiProvider: provider
+      layout,
+      aiProvider:
+        planMode === 'premium'
+          ? 'Claude'
+          : 'Gemini'
     });
 
   } catch (error) {
-    console.error(
-      'Adjust endpoint error:',
-      error
-    );
-
     return res.status(500).json({
       error:
         'Internal server error during layout adjustment'
@@ -789,8 +745,7 @@ app.post('/api/chat', async (req, res) => {
 
     if (!anthropicClient) {
       return res.status(503).json({
-        error:
-          'Anthropic API not configured for chat'
+        error: 'Anthropic API not configured'
       });
     }
 
@@ -806,18 +761,17 @@ app.post('/api/chat', async (req, res) => {
       claudeMessages.push({
         role: 'assistant',
         content:
-          'Understood. I will use that room context when answering.'
+          'Understood.'
       });
     }
 
     for (const message of messages) {
-      const role =
-        message.role === 'assistant'
-          ? 'assistant'
-          : 'user';
-
       claudeMessages.push({
-        role,
+        role:
+          message.role === 'assistant'
+            ? 'assistant'
+            : 'user',
+
         content:
           message.content ||
           message.text ||
@@ -848,20 +802,13 @@ app.post('/api/chat', async (req, res) => {
       error
     );
 
-    const status =
-      Number(error?.status) || 500;
-
-    return res
-      .status(
-        status >= 400 && status < 600
-          ? status
-          : 500
-      )
-      .json({
-        error:
-          error?.message ||
-          'Internal server error during chat processing'
-      });
+    return res.status(
+      Number(error?.status) || 500
+    ).json({
+      error:
+        error?.message ||
+        'Chat request failed'
+    });
   }
 });
 
@@ -869,13 +816,8 @@ app.post('/api/chat', async (req, res) => {
 // UNKNOWN API ROUTES
 // ======================================================
 
-// Important:
-// API routes should NEVER fall through to index.html.
-// This prevents:
-// Unexpected token '<', "<!DOCTYPE..." is not valid JSON
-
 app.use('/api', (req, res) => {
-  return res.status(404).json({
+  res.status(404).json({
     error:
       `API route not found: ${req.method} ${req.originalUrl}`
   });
@@ -891,7 +833,6 @@ app.use(
   )
 );
 
-// SPA fallback comes LAST
 app.get('*', (req, res) => {
   res.sendFile(
     path.join(
@@ -902,7 +843,7 @@ app.get('*', (req, res) => {
 });
 
 // ======================================================
-// START SERVER
+// START
 // ======================================================
 
 app.listen(PORT, () => {
