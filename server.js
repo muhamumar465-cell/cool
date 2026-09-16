@@ -887,6 +887,33 @@ function occupiesFloorSpace(
   );
 }
 
+function canLegitimatelyOverlap(itemA, itemB) {
+  const nameA = String(itemA.name || '').toLowerCase();
+  const nameB = String(itemB.name || '').toLowerCase();
+
+  // Check for table and chairs group
+  const isTableA = nameA.includes('table');
+  const isTableB = nameB.includes('table');
+  const isChairsGroupA = nameA.includes('chair') && nameA.includes('group');
+  const isChairsGroupB = nameB.includes('chair') && nameB.includes('group');
+
+  if ((isTableA && isChairsGroupB) || (isTableB && isChairsGroupA)) {
+    return true;
+  }
+
+  // Check for dining table and dining chairs
+  const isDiningTableA = nameA.includes('dining table');
+  const isDiningTableB = nameB.includes('dining table');
+  const isDiningChairsA = nameA.includes('dining') && nameA.includes('chair');
+  const isDiningChairsB = nameB.includes('dining') && nameB.includes('chair');
+
+  if ((isDiningTableA && isDiningChairsB) || (isDiningTableB && isDiningChairsA)) {
+    return true;
+  }
+
+  return false;
+}
+
 // ======================================================
 // LAYOUT SEMANTIC VALIDATION
 // ======================================================
@@ -1103,7 +1130,8 @@ function validateLayoutSemantics(
               ) ||
               !occupiesFloorSpace(
                 otherItem
-              )
+              ) ||
+              canLegitimatelyOverlap(inputItem, otherItem)
             ) {
               continue;
             }
@@ -1134,31 +1162,44 @@ function validateLayoutSemantics(
                 ? otherItem.widthCm
                 : otherItem.depthCm;
 
-            const otherHalfWidth =
-              otherWidth / 2;
+            
+            // Compute input item's dimensions accounting for rotation
+            const inputRotation =
+              (
+                (placement.rotation %
+                  360) +
+                360
+              ) %
+              360;
 
-            const otherHalfDepth =
-              otherDepth / 2;
+            const inputQuarterTurn =
+              inputRotation === 90 ||
+              inputRotation === 270;
 
-            const overlaps =
-              placement.x +
-                halfWidth >
-                other.x -
-                  otherHalfWidth &&
-              placement.x -
-                halfWidth <
-                other.x +
-                  otherHalfWidth &&
-              placement.y +
-                halfDepth >
-                other.y -
-                  otherHalfDepth &&
-              placement.y -
-                halfDepth <
-                other.y +
-                  otherHalfDepth;
+            const inputWidth =
+              inputQuarterTurn
+                ? inputItem.depthCm
+                : inputItem.widthCm;
 
-            if (overlaps) {
+            const inputDepth =
+              inputQuarterTurn
+                ? inputItem.widthCm
+                : inputItem.depthCm;
+
+            const overlap = rectanglesOverlap(
+              placement.x,
+              placement.y,
+              inputWidth,
+              inputDepth,
+              placement.rotation,
+              other.x,
+              other.y,
+              otherWidth,
+              otherDepth,
+              otherRotation
+            );
+
+            if (overlap) {
               throw new Error(
                 `Furniture ${furnitureId} overlaps with ${other.furnitureId} in layout ${layoutIndex}`
               );
