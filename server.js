@@ -829,23 +829,23 @@ app.post('/api/layouts', async (req, res) => {
         const startedAt = Date.now();
 
         const result = await withTimeout(
-          anthropicClient.messages.create({
-            model: 'claude-sonnet-5',
-            max_tokens: 1500,
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  {
-                    type: 'text',
-                    text: prompt
-                  }
-                ]
-              }
-            ]
-          }),
-          30000
-        );
+  anthropicClient.messages.create({
+    model: 'claude-sonnet-5',
+    max_tokens: 4000,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: prompt
+          }
+        ]
+      }
+    ]
+  }),
+  30000
+);
 
         console.log(
           `Claude layout generation completed in ${Date.now() - startedAt}ms`
