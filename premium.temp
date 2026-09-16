@@ -1,1 +1,1 @@
-{"layouts":[{"id":"layout1","placements":[{"furnitureId":"f1","x":125,"y":175,"rotation":0}],"clearanceCm":0}],"checked":1,"aiProvider":"Claude","interpretedGoals":[],"interpretedConstraints":[],"unsupported":[],"rejected":[]}
+{"layouts":[{"id":"layout1","placements":[{"furnitureId":"f1","x":25,"y":25,"rotation":0}],"clearanceCm":0}],"checked":1,"aiProvider":"Claude","interpretedGoals":[],"interpretedConstraints":[],"unsupported":[],"rejected":[]}
