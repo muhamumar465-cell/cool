@@ -914,6 +914,75 @@ function canLegitimatelyOverlap(itemA, itemB) {
   return false;
 }
 
+function getCorners(cx, cy, w, h, angleDeg) {
+  const angle = angleDeg * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const halfW = w / 2;
+  const halfH = h / 2;
+
+  // Local coordinates of corners (before rotation)
+  const localCorners = [
+    { x: -halfW, y: -halfH },
+    { x:  halfW, y: -halfH },
+    { x:  halfW, y:  halfH },
+    { x: -halfW, y:  halfH }
+  ];
+
+  // Rotate and translate
+  return localCorners.map(local => {
+    const xr = local.x * cos - local.y * sin;
+    const yr = local.x * sin + local.y * cos;
+    return { x: cx + xr, y: cy + yr };
+  });
+}
+
+function rectanglesOverlap(cx1, cy1, w1, h1, angle1, cx2, cy2, w2, h2, angle2) {
+  // Get axes for both rectangles (normals to edges)
+  const axes = [];
+
+  // Rectangle 1 axes
+  const angle1Rad = angle1 * Math.PI / 180;
+  const cos1 = Math.cos(angle1Rad);
+  const sin1 = Math.sin(angle1Rad);
+  // Width direction (before rotation: (1,0)) -> after rotation: (cos1, sin1)
+  // Height direction (before rotation: (0,1)) -> after rotation: (-sin1, cos1)
+  // Normals: for width edge: (-sin1, cos1); for height edge: (-cos1, -sin1)
+  axes.push({ x: -sin1, y: cos1 });
+  axes.push({ x: -cos1, y: -sin1 });
+
+  // Rectangle 2 axes
+  const angle2Rad = angle2 * Math.PI / 180;
+  const cos2 = Math.cos(angle2Rad);
+  const sin2 = Math.sin(angle2Rad);
+  axes.push({ x: -sin2, y: cos2 });
+  axes.push({ x: -cos2, y: -sin2 });
+
+  // For each axis, check projections
+  for (const axis of axes) {
+    // Project rectangle 1
+    const corners1 = getCorners(cx1, cy1, w1, h1, angle1);
+    const proj1 = corners1.map(corner => corner.x * axis.x + corner.y * axis.y);
+    const min1 = Math.min(...proj1);
+    const max1 = Math.max(...proj1);
+
+    // Project rectangle 2
+    const corners2 = getCorners(cx2, cy2, w2, h2, angle2);
+    const proj2 = corners2.map(corner => corner.x * axis.x + corner.y * axis.y);
+    const min2 = Math.min(...proj2);
+    const max2 = Math.max(...proj2);
+
+    // Check for overlap on this axis
+    if (max1 < min2 || max2 < min1) {
+      // No overlap on this axis -> no collision
+      return false;
+    }
+  }
+
+  // Overlap on all axes -> collision
+  return true;
+}
+
 // ======================================================
 // LAYOUT SEMANTIC VALIDATION
 // ======================================================
