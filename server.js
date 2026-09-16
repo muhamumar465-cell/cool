@@ -106,7 +106,9 @@ Rules:
 `;
 
 const LAYOUT_PROMPT = `
-You are an expert interior designer. Generate furniture layout options for a room based on the provided details.
+You are an expert interior designer.
+
+Generate practical alternative furniture arrangements for the supplied room.
 
 Return ONLY valid JSON.
 
@@ -133,26 +135,33 @@ Use exactly this structure:
 Rules:
 - Do NOT use markdown code fences.
 - Do NOT include text outside the JSON.
-- The room dimensions (widthCm, depthCm) are provided in the input.
-- All furniture items must be placed within the room boundaries.
-- Fixed items (mobility: "Fixed") must remain at their exact input positions (xCm, yCm) and rotation.
-- Movable items (mobility: "Movable") can be placed anywhere within the room, respecting constraints.
-- Do not overlap furniture items.
-- Leave at least the specified clearanceCm between items and walls if possible.
-- Prioritize staying within the room and respecting fixed items.
-- Take into account the provided goals and constraints.
-- Generate the requested number of layouts, up to 3.
-- wallsUtilized must contain only north, south, east, west.
-- Use [] if no wall is meaningfully utilized.
+- Room widthCm and depthCm are provided in the input.
+- Coordinates x and y represent the CENTER of each item in centimetres.
+- Preserve every furniture ID exactly.
+- Every input furniture item must appear exactly once in every layout.
+- Do not invent furniture.
+- Fixed furniture must remain at its exact original xCm, yCm and rotation.
+- Movable furniture may be repositioned.
+- Keep furniture within the room.
+- Do not overlap floor-standing furniture.
+- Ceiling-mounted objects may share x/y floor-plan space with floor furniture.
+- Respect supplied goals and constraints.
+- Prefer practical circulation and usable space.
+- Respect clearanceCm where practical.
+- Generate the requested number of options, maximum 3.
+- wallsUtilized may only contain north, south, east, west.
+- Use [] when no particular wall is meaningfully utilized.
 `;
 
 // ======================================================
-// HELPERS
+// BASIC HELPERS
 // ======================================================
 
 function parseDataUrl(image) {
   if (typeof image !== 'string' || !image.trim()) {
-    throw new Error('Each image must be a non-empty string');
+    throw new Error(
+      'Each image must be a non-empty string'
+    );
   }
 
   const match = image.match(
@@ -182,9 +191,8 @@ function parseAiJson(text) {
     );
   }
 
-  let cleaned = text.trim();
-
-  cleaned = cleaned
+  let cleaned = text
+    .trim()
     .replace(
       /^```(?:json)?\s*/i,
       ''
@@ -278,9 +286,9 @@ function withTimeout(
           () =>
             reject(
               new Error(
-                `AI request timed out after ${
-                  Math.round(ms / 1000)
-                } seconds`
+                `AI request timed out after ${Math.round(
+                  ms / 1000
+                )} seconds`
               )
             ),
           ms
@@ -290,7 +298,7 @@ function withTimeout(
 }
 
 // ======================================================
-// VALIDATION
+// SCAN VALIDATION
 // ======================================================
 
 function validateScanResponse(data) {
@@ -446,7 +454,8 @@ function validateScanResponse(data) {
     }
 
     if (
-      typeof item.id !== 'string'
+      typeof item.id !==
+      'string'
     ) {
       throw new Error(
         'Invalid furniture.id'
@@ -550,6 +559,10 @@ function validateScanResponse(data) {
 
   return true;
 }
+
+// ======================================================
+// LAYOUT STRUCTURE VALIDATION
+// ======================================================
 
 function validateLayoutResponse(
   data
@@ -715,61 +728,168 @@ function validateLayoutResponse(
   return true;
 }
 
-function repairLayoutBounds(layoutResult, room, furniture) {
-  const furnitureMap = Object.fromEntries(
-    furniture.map(item => [item.id, item])
-  );
+// ======================================================
+// LAYOUT REPAIR
+// ======================================================
 
-  for (const layout of layoutResult.layouts) {
-    for (const placement of layout.placements) {
-      const item = furnitureMap[placement.furnitureId];
+function repairLayoutBounds(
+  layoutResult,
+  room,
+  furniture
+) {
+  const furnitureMap =
+    Object.fromEntries(
+      furniture.map(
+        item => [
+          item.id,
+          item
+        ]
+      )
+    );
 
-      if (!item) continue;
+  for (
+    const layout of
+    layoutResult.layouts
+  ) {
+    for (
+      const placement of
+      layout.placements
+    ) {
+      const item =
+        furnitureMap[
+          placement.furnitureId
+        ];
 
-      if (item.mobility === 'Fixed') {
-        placement.x = item.xCm;
-        placement.y = item.yCm;
-        placement.rotation = item.rotation;
+      if (!item) {
+        continue;
+      }
+
+      // Fixed objects always return to their
+      // confirmed original location.
+      if (
+        item.mobility ===
+        'Fixed'
+      ) {
+        placement.x =
+          item.xCm;
+
+        placement.y =
+          item.yCm;
+
+        placement.rotation =
+          item.rotation;
+
         continue;
       }
 
       const rotation =
-        ((placement.rotation % 360) + 360) % 360;
+        (
+          (
+            placement.rotation %
+            360
+          ) +
+          360
+        ) %
+        360;
 
       const quarterTurn =
-        rotation === 90 || rotation === 270;
+        rotation === 90 ||
+        rotation === 270;
 
-      const width = quarterTurn
-        ? item.depthCm
-        : item.widthCm;
+      const width =
+        quarterTurn
+          ? item.depthCm
+          : item.widthCm;
 
-      const depth = quarterTurn
-        ? item.widthCm
-        : item.depthCm;
+      const depth =
+        quarterTurn
+          ? item.widthCm
+          : item.depthCm;
 
-      const halfWidth = width / 2;
-      const halfDepth = depth / 2;
+      const halfWidth =
+        width / 2;
 
-      placement.x = Math.max(
-        halfWidth,
-        Math.min(
-          room.widthCm - halfWidth,
-          placement.x
-        )
-      );
+      const halfDepth =
+        depth / 2;
 
-      placement.y = Math.max(
-        halfDepth,
-        Math.min(
-          room.depthCm - halfDepth,
-          placement.y
-        )
-      );
+      // If an object itself is larger than
+      // the room, do not create impossible
+      // negative clamp ranges.
+      if (
+        width <= room.widthCm
+      ) {
+        placement.x =
+          Math.max(
+            halfWidth,
+            Math.min(
+              room.widthCm -
+                halfWidth,
+              placement.x
+            )
+          );
+      }
+
+      if (
+        depth <= room.depthCm
+      ) {
+        placement.y =
+          Math.max(
+            halfDepth,
+            Math.min(
+              room.depthCm -
+                halfDepth,
+              placement.y
+            )
+          );
+      }
     }
   }
 
   return layoutResult;
 }
+
+// ======================================================
+// FLOOR-SPACE CLASSIFICATION
+// ======================================================
+
+function occupiesFloorSpace(
+  item
+) {
+  const name =
+    String(
+      item?.name || ''
+    )
+      .toLowerCase()
+      .replace(
+        /[_-]/g,
+        ' '
+      );
+
+  const nonFloorKeywords = [
+    'ceiling projector',
+    'projector',
+    'ceiling fan',
+    'ceiling light',
+    'light fixture',
+    'ceiling fixture',
+    'pendant light',
+    'chandelier',
+    'smoke detector',
+    'ceiling speaker',
+    'ceiling camera'
+  ];
+
+  return !nonFloorKeywords.some(
+    keyword =>
+      name.includes(
+        keyword
+      )
+  );
+}
+
+// ======================================================
+// LAYOUT SEMANTIC VALIDATION
+// ======================================================
 
 function validateLayoutSemantics(
   layoutResult,
@@ -787,33 +907,36 @@ function validateLayoutSemantics(
     );
   }
 
-  const inputFurnitureMap = {};
+  const inputFurnitureMap =
+    {};
 
-  furniture.forEach(item => {
-    if (
-      !item.id ||
-      typeof item.id !==
-        'string'
-    ) {
-      throw new Error(
-        'Invalid input furniture: missing or non-string id'
-      );
-    }
+  furniture.forEach(
+    item => {
+      if (
+        !item.id ||
+        typeof item.id !==
+          'string'
+      ) {
+        throw new Error(
+          'Invalid input furniture: missing or non-string id'
+        );
+      }
 
-    if (
+      if (
+        inputFurnitureMap[
+          item.id
+        ]
+      ) {
+        throw new Error(
+          `Duplicate furniture id in input: ${item.id}`
+        );
+      }
+
       inputFurnitureMap[
         item.id
-      ]
-    ) {
-      throw new Error(
-        `Duplicate furniture id in input: ${item.id}`
-      );
+      ] = item;
     }
-
-    inputFurnitureMap[
-      item.id
-    ] = item;
-  });
+  );
 
   layoutResult.layouts.forEach(
     (
@@ -866,6 +989,8 @@ function validateLayoutSemantics(
             );
           }
 
+          // Fixed furniture must remain exactly
+          // where the verified room plan says it is.
           if (
             inputItem.mobility ===
             'Fixed'
@@ -885,21 +1010,26 @@ function validateLayoutSemantics(
           }
 
           const rotation =
-            Math.abs(
-              placement.rotation %
-                180
-            );
+            (
+              (
+                placement.rotation %
+                360
+              ) +
+              360
+            ) %
+            360;
 
-          const rotated =
-            rotation === 90;
+          const quarterTurn =
+            rotation === 90 ||
+            rotation === 270;
 
           const width =
-            rotated
+            quarterTurn
               ? inputItem.depthCm
               : inputItem.widthCm;
 
           const depth =
-            rotated
+            quarterTurn
               ? inputItem.widthCm
               : inputItem.depthCm;
 
@@ -908,6 +1038,10 @@ function validateLayoutSemantics(
 
           const halfDepth =
             depth / 2;
+
+          // ==================================================
+          // ROOM BOUNDARY VALIDATION
+          // ==================================================
 
           if (
             placement.x -
@@ -928,6 +1062,10 @@ function validateLayoutSemantics(
             );
           }
 
+          // ==================================================
+          // COLLISION VALIDATION
+          // ==================================================
+
           for (
             let j = 0;
             j <
@@ -936,7 +1074,8 @@ function validateLayoutSemantics(
             j++
           ) {
             if (
-              j === placementIndex
+              j ===
+              placementIndex
             ) {
               continue;
             }
@@ -953,22 +1092,45 @@ function validateLayoutSemantics(
               continue;
             }
 
-            const otherRotation =
-              Math.abs(
-                other.rotation %
-                  180
-              );
+            // IMPORTANT:
+            // Ceiling-mounted objects are allowed to
+            // occupy the same x/y region as floor
+            // furniture because they are vertically
+            // separated in the real room.
+            if (
+              !occupiesFloorSpace(
+                inputItem
+              ) ||
+              !occupiesFloorSpace(
+                otherItem
+              )
+            ) {
+              continue;
+            }
 
-            const otherRotated =
-              otherRotation === 90;
+            const otherRotation =
+              (
+                (
+                  other.rotation %
+                  360
+                ) +
+                360
+              ) %
+              360;
+
+            const otherQuarterTurn =
+              otherRotation ===
+                90 ||
+              otherRotation ===
+                270;
 
             const otherWidth =
-              otherRotated
+              otherQuarterTurn
                 ? otherItem.depthCm
                 : otherItem.widthCm;
 
             const otherDepth =
-              otherRotated
+              otherQuarterTurn
                 ? otherItem.widthCm
                 : otherItem.depthCm;
 
@@ -1005,6 +1167,8 @@ function validateLayoutSemantics(
         }
       );
 
+      // Make sure every input item exists
+      // exactly once in the generated layout.
       furniture.forEach(
         item => {
           if (
@@ -1031,8 +1195,10 @@ app.get(
   (req, res) => {
     res.json({
       ok: true,
+
       geminiConfigured:
         !!geminiClient,
+
       claudeConfigured:
         !!anthropicClient
     });
@@ -1046,6 +1212,7 @@ app.get(
       gemini: {
         configured:
           !!geminiClient,
+
         reachable: false,
         error: null
       },
@@ -1053,6 +1220,7 @@ app.get(
       claude: {
         configured:
           !!anthropicClient,
+
         reachable: false,
         error: null
       }
@@ -1061,13 +1229,15 @@ app.get(
     if (geminiClient) {
       try {
         await withTimeout(
-          geminiClient.models.generateContent({
-            model:
-              'gemini-3.6-flash',
+          geminiClient.models.generateContent(
+            {
+              model:
+                'gemini-3.6-flash',
 
-            contents:
-              'Reply only with OK'
-          }),
+              contents:
+                'Reply only with OK'
+            }
+          ),
 
           15000
         );
@@ -1083,27 +1253,32 @@ app.get(
         'API key not configured';
     }
 
-    if (anthropicClient) {
+    if (
+      anthropicClient
+    ) {
       try {
         await withTimeout(
-          anthropicClient.messages.create({
-            model:
-              'claude-sonnet-5',
+          anthropicClient.messages.create(
+            {
+              model:
+                'claude-sonnet-5',
 
-            max_tokens: 20,
+              max_tokens: 20,
 
-            thinking: {
-              type: 'disabled'
-            },
+              thinking: {
+                type:
+                  'disabled'
+              },
 
-            messages: [
-              {
-                role: 'user',
-                content:
-                  'Reply only with OK'
-              }
-            ]
-          }),
+              messages: [
+                {
+                  role: 'user',
+                  content:
+                    'Reply only with OK'
+                }
+              ]
+            }
+          ),
 
           15000
         );
@@ -1119,7 +1294,9 @@ app.get(
         'API key not configured';
     }
 
-    res.json(results);
+    return res.json(
+      results
+    );
   }
 );
 
@@ -1137,7 +1314,9 @@ app.post(
       } = req.body;
 
       if (
-        !Array.isArray(images) ||
+        !Array.isArray(
+          images
+        ) ||
         images.length === 0
       ) {
         return res
@@ -1162,9 +1341,9 @@ app.post(
 
       let scanResult;
 
-      // ================================================
-      // FREE = GEMINI
-      // ================================================
+      // ==================================================
+      // FREE SCAN = GEMINI
+      // ==================================================
 
       if (
         planMode === 'free'
@@ -1274,12 +1453,13 @@ app.post(
         }
       }
 
-      // ================================================
-      // PREMIUM = CLAUDE
-      // ================================================
+      // ==================================================
+      // PREMIUM SCAN = CLAUDE
+      // ==================================================
 
       if (
-        planMode === 'premium'
+        planMode ===
+        'premium'
       ) {
         if (
           !anthropicClient
@@ -1305,7 +1485,8 @@ app.post(
                   );
 
                 return {
-                  type: 'image',
+                  type:
+                    'image',
 
                   source: {
                     type:
@@ -1449,7 +1630,7 @@ app.post(
 );
 
 // ======================================================
-// LAYOUTS
+// LAYOUT GENERATION
 // ======================================================
 
 app.post(
@@ -1553,7 +1734,8 @@ app.post(
         clearanceCm ?? 75;
 
       const provider =
-        planMode === 'premium'
+        planMode ===
+        'premium'
           ? 'Claude'
           : 'Gemini';
 
@@ -1580,9 +1762,9 @@ app.post(
 
       let layoutResult;
 
-      // ================================================
-      // FREE = GEMINI
-      // ================================================
+      // ==================================================
+      // FREE LAYOUT = GEMINI
+      // ==================================================
 
       if (
         planMode === 'free'
@@ -1670,12 +1852,13 @@ app.post(
         }
       }
 
-      // ================================================
-      // PREMIUM = CLAUDE
-      // ================================================
+      // ==================================================
+      // PREMIUM LAYOUT = CLAUDE
+      // ==================================================
 
       if (
-        planMode === 'premium'
+        planMode ===
+        'premium'
       ) {
         if (
           !anthropicClient
@@ -1780,19 +1963,26 @@ app.post(
         }
       }
 
-      validateLayoutResponse(layoutResult);
+      // ==================================================
+      // VALIDATE + REPAIR
+      // ==================================================
 
-layoutResult = repairLayoutBounds(
-  layoutResult,
-  room,
-  furniture
-);
+      validateLayoutResponse(
+        layoutResult
+      );
 
-validateLayoutSemantics(
-  layoutResult,
-  room,
-  furniture
-);
+      layoutResult =
+        repairLayoutBounds(
+          layoutResult,
+          room,
+          furniture
+        );
+
+      validateLayoutSemantics(
+        layoutResult,
+        room,
+        furniture
+      );
 
       return res.json({
         layouts:
@@ -1871,22 +2061,25 @@ app.post(
 
       const recommendations =
         candidates
-          .slice(0, 3)
+          .slice(
+            0,
+            3
+          )
           .map(
             (
               candidate,
               index
             ) => ({
               productId:
-                candidate.product
-                  ?.id ||
+                candidate
+                  .product?.id ||
                 `product-${
                   index + 1
                 }`,
 
               name:
-                candidate.product
-                  ?.name ||
+                candidate
+                  .product?.name ||
                 `Furniture Option ${
                   index + 1
                 }`,
@@ -2091,7 +2284,8 @@ app.post(
       const status =
         Number(
           error?.status
-        ) || 500;
+        ) ||
+        500;
 
       return res
         .status(
@@ -2159,11 +2353,13 @@ const isStaticAsset =
         '.json'
       ];
 
-    return staticExtensions.some(
-      ext =>
-        requestPath
-          .toLowerCase()
-          .endsWith(ext)
+    return (
+      staticExtensions.some(
+        ext =>
+          requestPath
+            .toLowerCase()
+            .endsWith(ext)
+      )
     );
   };
 
@@ -2182,7 +2378,7 @@ app.get(
         );
     }
 
-    res.sendFile(
+    return res.sendFile(
       path.join(
         __dirname,
         'index.html'
