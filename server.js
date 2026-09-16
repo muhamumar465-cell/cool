@@ -715,6 +715,62 @@ function validateLayoutResponse(
   return true;
 }
 
+function repairLayoutBounds(layoutResult, room, furniture) {
+  const furnitureMap = Object.fromEntries(
+    furniture.map(item => [item.id, item])
+  );
+
+  for (const layout of layoutResult.layouts) {
+    for (const placement of layout.placements) {
+      const item = furnitureMap[placement.furnitureId];
+
+      if (!item) continue;
+
+      if (item.mobility === 'Fixed') {
+        placement.x = item.xCm;
+        placement.y = item.yCm;
+        placement.rotation = item.rotation;
+        continue;
+      }
+
+      const rotation =
+        ((placement.rotation % 360) + 360) % 360;
+
+      const quarterTurn =
+        rotation === 90 || rotation === 270;
+
+      const width = quarterTurn
+        ? item.depthCm
+        : item.widthCm;
+
+      const depth = quarterTurn
+        ? item.widthCm
+        : item.depthCm;
+
+      const halfWidth = width / 2;
+      const halfDepth = depth / 2;
+
+      placement.x = Math.max(
+        halfWidth,
+        Math.min(
+          room.widthCm - halfWidth,
+          placement.x
+        )
+      );
+
+      placement.y = Math.max(
+        halfDepth,
+        Math.min(
+          room.depthCm - halfDepth,
+          placement.y
+        )
+      );
+    }
+  }
+
+  return layoutResult;
+}
+
 function validateLayoutSemantics(
   layoutResult,
   room,
@@ -1724,15 +1780,19 @@ app.post(
         }
       }
 
-      validateLayoutResponse(
-        layoutResult
-      );
+      validateLayoutResponse(layoutResult);
 
-      validateLayoutSemantics(
-        layoutResult,
-        room,
-        furniture
-      );
+layoutResult = repairLayoutBounds(
+  layoutResult,
+  room,
+  furniture
+);
+
+validateLayoutSemantics(
+  layoutResult,
+  room,
+  furniture
+);
 
       return res.json({
         layouts:
