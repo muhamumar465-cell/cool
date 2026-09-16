@@ -4930,7 +4930,7 @@ selectedLayout:e,budget:t,layoutCount:n,selectedGoals:r,planMode:i,roomModel:a,g
 let c=o.slice(0,n).map(e=>({
 name:e.name,spend:0,score:e.score,keep:`100% kept`,clearance:`${
 e.clearanceCm
-} cm path`,note:((e.wallsUtilized ?? []).slice(0,2).join(` `))||`Validated arrangement using the confirmed room model.`,engine:e
+} cm path`,note:e.decisions.slice(0,2).join(` `)||`Validated arrangement using the confirmed room model.`,engine:e
 }));
 return(0,B.jsxs)($,{
 eyebrow:`Choose Layout`,title:`Choose a layout.`,children:[(0,B.jsx)(`div`,{

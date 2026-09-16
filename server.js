@@ -124,7 +124,8 @@ Use exactly this structure:
           "rotation": number
         }
       ],
-      "clearanceCm": number
+      "clearanceCm": number,
+      "wallsUtilized": ["north", "south", "east", "west"]
     }
   ]
 }
@@ -386,6 +387,16 @@ function validateLayoutResponse(data) {
 
     if (typeof layout.clearanceCm !== 'number' || !Number.isFinite(layout.clearanceCm) || layout.clearanceCm < 0) {
       throw new Error('Invalid layout.clearanceCm');
+    }
+
+    if (!Array.isArray(layout.wallsUtilized)) {
+      throw new Error('Invalid layout.wallsUtilized: must be an array');
+    }
+    const validWalls = ['north', 'south', 'east', 'west'];
+    for (const wall of layout.wallsUtilized) {
+      if (typeof wall !== 'string' || !validWalls.includes(wall)) {
+        throw new Error('Invalid wall in wallsUtilized: ' + wall + '. Must be one of north, south, east, west');
+      }
     }
   }
 
