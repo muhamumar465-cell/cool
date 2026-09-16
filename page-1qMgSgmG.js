@@ -3329,9 +3329,7 @@ w(e),ce(A.find(t=>t.name===e)??null)
 }let we=(0,u.useCallback)(e=>{
 oe(e),e[0]&&(w(e[0].name),ce(e[0]))
 },[]),Te=(0,u.useCallback)(e=>{
-ae(e),O(t=>({
-...t??Jo,furniture:e
-}))
+ae(e),O(prev=>{if(prev===null)return null;return{...prev,furniture:e}})
 },[]),Ee=se??A.find(e=>e.name===S)??null,De=n===`free`||(!i.includes(`Add`)||N.trim().length>0)&&k.every(e=>j[e.id]?.action!==`Replace`||j[e.id].need.trim().length>0);
 (0,u.useEffect)(()=>{
 `scrollRestoration`in window.history&&(window.history.scrollRestoration=`manual`)
@@ -3408,10 +3406,11 @@ room:o,planMode:n,scanResult:D,onRoom:s,onScan:Se
 });
 case 2:return(0,B.jsx)(_s,{
 scan:{
-...D??Jo,furniture:k
+...D,
+furniture:k
 },onFurniture:Te,onRoomDimensions:(e,t)=>O(n=>({
-...n??Jo,room:{
-...(n??Jo).room,widthCm:e,depthCm:t
+...n,room:{
+...n.room,widthCm:e,depthCm:t
 }
 }))
 },k.map(e=>e.id).join(`|`));
@@ -3424,22 +3423,22 @@ re(e),e<3&&w(`Minimal Changes`)
 }
 });
 case 5:return(0,B.jsx)(ys,{
-planMode:n,selectedGoals:he,constraintNote:ge,layoutCount:T,roomModel:(D??Jo).room,furniture:k,onLayouts:we,onAdjust:()=>R(4),onContinue:()=>R(7),onOpenFinder:()=>R(13)
+planMode:n,selectedGoals:he,constraintNote:ge,layoutCount:T,roomModel:D.room,furniture:k,onLayouts:we,onAdjust:()=>R(4),onContinue:()=>R(7),onOpenFinder:()=>R(13)
 });
 case 6:return(0,B.jsx)(bs,{
 selectedKrar:i,planMode:n
 });
 case 7:return(0,B.jsx)(xs,{
-selectedLayout:S,budget:b[0],layoutCount:T,selectedGoals:he,planMode:n,roomModel:(D??Jo).room,generatedLayouts:A,onLayout:Ce
+selectedLayout:S,budget:b[0],layoutCount:T,selectedGoals:he,planMode:n,roomModel:D?.room,generatedLayouts:A,onLayout:Ce
 });
 case 8:return(0,B.jsx)(Ss,{
-selectedLayout:S,selectedKrar:i,room:(D??Jo).room,layoutResult:Ee
+selectedLayout:S,selectedKrar:i,room:D?.room,layoutResult:Ee
 });
 case 9:return(0,B.jsx)(Es,{
-planMode:n,room:(D??Jo).room,sourceFurniture:k,layoutResult:Ee,onLayoutChange:ce
+planMode:n,room:D?.room,sourceFurniture:k,layoutResult:Ee,onLayoutChange:ce
 });
 case 10:return(0,B.jsx)(Ds,{
-selectedGoals:he,constraintNote:ge,layout:S,planMode:n,room:(D??Jo).room,layoutResult:Ee
+selectedGoals:he,constraintNote:ge,layout:S,planMode:n,room:D?.room,layoutResult:Ee
 });
 case 11:return(0,B.jsx)(Os,{
 
