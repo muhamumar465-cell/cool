@@ -3,7 +3,7 @@ r as e
 }from"./rolldown-runtime-C60lm6uB.js";
 import{
 i as t,n,r
-}from"./framework.js";
+}from"./framework-D_rUT4EX.js";
 var i=(...e)=>e.filter((e,t,n)=>!!e&&e.trim()!==``&&n.indexOf(e)===t).join(` `).trim(),a=e=>e.replace(/([a-z0-9])([A-Z])/g,`$1-$2`).toLowerCase(),o=e=>e.replace(/^([A-Z])|[\s-_]+(\w)/g,(e,t,n)=>n?n.toUpperCase():t.toLowerCase()),s=e=>{
 let t=o(e);
 return t.charAt(0).toUpperCase()+t.slice(1)
