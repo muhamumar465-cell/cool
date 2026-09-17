@@ -845,6 +845,17 @@ function repairLayoutBounds(
 // - every furniture item appears in every layout
 // ======================================================
 
+function isBoundaryStructuralItem(item) {
+  const name = String(item?.name || '').toLowerCase();
+
+  return (
+    name.includes('sliding partition') ||
+    name.includes('partition') ||
+    name.includes('sliding door') ||
+    name.includes('room divider')
+  );
+}
+
 function validateLayoutSemantics(
   layoutResult,
   room,
@@ -999,7 +1010,18 @@ function validateLayoutSemantics(
           // ROOM BOUNDARY CHECK
           // ==============================================
 
-          if (
+          if (isBoundaryStructuralItem(inputItem)) {
+            console.log(
+              'BOUNDARY ITEM',
+              furnitureId,
+              inputItem.name,
+              placement.x,
+              placement.y,
+              inputItem.widthCm,
+              inputItem.depthCm,
+              placement.rotation
+            );
+          } else if (
             placement.x -
                 halfWidth <
               0 ||
