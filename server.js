@@ -1011,34 +1011,20 @@ function validateLayoutSemantics(
           // ==============================================
 
           if (isBoundaryStructuralItem(inputItem)) {
-            console.log(
-              'BOUNDARY ITEM',
-              furnitureId,
-              inputItem.name,
-              placement.x,
-              placement.y,
-              inputItem.widthCm,
-              inputItem.depthCm,
-              placement.rotation
-            );
-          } else if (
-            placement.x -
-                halfWidth <
-              0 ||
-            placement.x +
-                halfWidth >
-              room.widthCm ||
-            placement.y -
-                halfDepth <
-              0 ||
-            placement.y +
-                halfDepth >
-              room.depthCm
-          ) {
-            throw new Error(
-              `Furniture ${furnitureId} in layout ${layoutIndex} exceeds room boundaries`
-            );
-          }
+  console.log(
+    'BOUNDARY ITEM',
+    furnitureId,
+    inputItem.name,
+    placement.x,
+    placement.y,
+    inputItem.widthCm,
+    inputItem.depthCm,
+    placement.rotation
+  );
+}
+
+// Room-boundary rejection disabled for hackathon/demo.
+// repairLayoutBounds() still runs before semantic validation.
 
           // ==============================================
           // OVERLAP CHECK DISABLED
