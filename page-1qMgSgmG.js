@@ -4649,7 +4649,7 @@ t.length
 } goals`:`Constraints only`;
 return(0,u.useEffect)(()=>{
 let s=new AbortController;
-return f(`running`),re([]),o([]),fetch(`/api/layouts`,{
+return f(`running`),re([]),o([]),console.log('LAYOUT INPUT ROOM', i),console.log('LAYOUT INPUT FURNITURE', a),fetch(`/api/layouts`,{
 method:`POST`,headers:{
 "Content-Type":`application/json`
 },signal:s.signal,body:JSON.stringify({
@@ -4658,25 +4658,11 @@ room:i,furniture:a,goals:t,constraints:n,count:r,clearanceCm:75,planMode:e
 }).then(async e=>{
 let t=await e.json();
 if(!e.ok)throw Error(t.error??`Layout generation failed.`);
-        console.log('LAYOUT INPUT ROOM', i);
-        console.log('LAYOUT INPUT FURNITURE', a);
+            console.log('RAW LAYOUT RESPONSE', t);
         console.log('RAW AI LAYOUTS', t.layouts);
-        // Normalize layouts
-        const furnitureMap = new Map();
-        a.forEach(furn => furnitureMap.set(furn.id, furn));
-        const normalizedLayouts = (t.layouts??[]).map(layout => {
-            const normalizedPlacements = (layout.placements??[]).map(placement => {
-                const furn = furnitureMap.get(placement.id);
-                if (!furn) {
-                    console.warn(`Unknown furniture id: ${placement.id}`);
-                    return null;
-                }
-                return {...furn, ...placement};
-            }).filter(Boolean); // remove nulls
-            return {...layout, placements: normalizedPlacements};
-        });
-        console.log('NORMALIZED AI LAYOUTS', normalizedLayouts);
-o(normalizedLayouts),m(t.checked??n.length),g((normalizedLayouts?[]..length)),v(n[0]?.goalsMet??0),O(t.aiProvider??`Layout engine`),b(t.interpretedGoals??[]),w(t.interpretedConstraints??[]),te(t.unsupported??[]),re([...new Set((t.rejected??[]).flat().map(e=>e.message))].slice(0,3)),f(`ready`),ae(n.length?`${
+            let n=(t.layouts??[]).map((layout,index)=>({...layout,name:layout.name??`Layout ${index+1}`,score:layout.score??0,decisions:Array.isArray(layout.decisions)?layout.decisions:[],placements:(layout.placements??[]).map(placement=>{const furnitureItem=a.find(item=>item.id===placement.furnitureId);if(!furnitureItem){console.warn('Unknown generated furniture ID:',placement.furnitureId);return null}return {...furnitureItem,xCm:placement.x,yCm:placement.y,rotation:placement.rotation}}).filter(Boolean)}));
+            console.log('NORMALIZED AI LAYOUTS', n);
+o(n),m(t.checked??n.length),g(n.length),v(n[0]?.goalsMet??0),O(t.aiProvider??`Layout engine`),b(t.interpretedGoals??[]),w(t.interpretedConstraints??[]),te(t.unsupported??[]),re([...new Set((t.rejected??[]).flat().map(e=>e.message))].slice(0,3)),f(`ready`),ae(n.length?`{
 n.length
 } valid layouts survived the geometry checks.`:t.rejected?.[0]?.[0]?.message??`No valid layout was found with the current inputs.`)
 }).catch(e=>{
