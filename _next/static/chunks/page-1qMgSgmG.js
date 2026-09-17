@@ -4169,7 +4169,7 @@ _(e.target.files),e.currentTarget.value=``
 className:`flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#d5bd7b] bg-[#d5bd7b] px-3 text-center text-[#243617]`,children:[(0,B.jsx)(ue,{
 className:`size-6`
 }),(0,B.jsx)(`span`,{
-className:`mt-2 font-semibold`,children:`Upload 4 pictures`
+className:`mt-2 font-semibold`,children:`Upload 4-6 pictures`
 }),(0,B.jsx)(`span`,{
 className:`mt-1 text-xs text-[#243617]/65`,children:`Choose them together`
 }),(0,B.jsx)(`input`,{

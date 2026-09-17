@@ -4118,7 +4118,7 @@ className:`text-xl font-semibold`,children:`Take or upload room photos`
 className:`bg-white text-[#243617] hover:bg-white`,children:t===`premium`?`Claude`:`Gemini`
 })]
 }),(0,B.jsx)(`p`,{
-className:`text-sm text-white/65`,children:`Upload four clear pictures: Front, Back, Left and Right.`
+className:`text-sm text-white/65`,children:`Upload 4-6 clear pictures: Front, Back, Left, Right, and optionally Top and Bottom.`
 })]
 })]
 }),m&&(0,B.jsxs)(`div`,{
@@ -4169,7 +4169,7 @@ _(e.target.files),e.currentTarget.value=``
 className:`flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[#d5bd7b] bg-[#d5bd7b] px-3 text-center text-[#243617]`,children:[(0,B.jsx)(ue,{
 className:`size-6`
 }),(0,B.jsx)(`span`,{
-className:`mt-2 font-semibold`,children:`Upload 4 pictures`
+className:`mt-2 font-semibold`,children:`Upload 4-6 pictures`
 }),(0,B.jsx)(`span`,{
 className:`mt-1 text-xs text-[#243617]/65`,children:`Choose them together`
 }),(0,B.jsx)(`input`,{
@@ -4180,7 +4180,7 @@ _(e.target.files),e.currentTarget.value=``
 })]
 }),(0,B.jsxs)(`div`,{
 className:`mt-3 flex items-center justify-between rounded-md bg-white/10 px-3 py-3 text-sm`,children:[(0,B.jsxs)(`span`,{
-children:[f.length,` of 4 required pictures added`,f.length>4?` · ${
+children:[f.length,` of 6 maximum pictures added`,f.length>4?` · ${
 f.length-4
 } extra`:``]
 }),f.length>0&&(0,B.jsx)(`button`,{

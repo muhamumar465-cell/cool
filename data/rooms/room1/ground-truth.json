@@ -1,0 +1,82 @@
+{
+  "roomId": "room-01",
+
+  "coordinateSystem": {
+    "x0": "wardrobe/bed side",
+    "x1": "desk side",
+    "y0": "door side",
+    "y1": "large-window side"
+  },
+
+  "furniture": [
+    {
+      "id": "bed-1",
+      "type": "bed",
+      "x": 0.22,
+      "y": 0.72,
+      "rotation": 90,
+      "mobility": "Movable"
+    },
+    {
+      "id": "wardrobe-1",
+      "type": "wardrobe",
+      "x": 0.18,
+      "y": 0.16,
+      "rotation": 0,
+      "mobility": "Fixed"
+    },
+    {
+      "id": "desk-1",
+      "type": "desk",
+      "x": 0.82,
+      "y": 0.43,
+      "rotation": 90,
+      "mobility": "Movable"
+    },
+    {
+      "id": "chair-1",
+      "type": "chair",
+      "x": 0.69,
+      "y": 0.45,
+      "rotation": 90,
+      "mobility": "Movable"
+    },
+    {
+      "id": "storage-holder-1",
+      "type": "low-storage-holder",
+      "x": 0.52,
+      "y": 0.88,
+      "rotation": 0,
+      "mobility": "Movable"
+    }
+  ],
+
+  "openings": [
+    {
+      "id": "door-1",
+      "type": "door",
+      "x": 0.64,
+      "y": 0.04
+    },
+    {
+      "id": "window-main-1",
+      "type": "window",
+      "x": 0.50,
+      "y": 0.98
+    },
+    {
+      "id": "window-small-1",
+      "type": "window",
+      "x": 0.13,
+      "y": 0.48
+    }
+  ],
+
+  "evaluationPriority": [
+    "correct furniture detected",
+    "correct relative position",
+    "correct wall association",
+    "correct orientation",
+    "no duplicate furniture"
+  ]
+}
